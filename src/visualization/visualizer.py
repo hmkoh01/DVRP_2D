@@ -156,10 +156,10 @@ class Visualizer:
 
     def toggle_simulation(self):
         if hasattr(self, 'simulation_engine'):
-            if self.simulation_engine.is_running:
-                self.simulation_engine.pause_simulation()
-            else:
+            if self.simulation_engine.paused:
                 self.simulation_engine.resume_simulation()
+            else:
+                self.simulation_engine.pause_simulation()
 
     def update(self):
         self.animation_time += 1

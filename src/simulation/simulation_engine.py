@@ -49,6 +49,7 @@ class SimulationEngine:
         
         print("Starting simulation...")
         self.is_running = True
+        self.paused = False
         self.simulation_time = 0.0
         self.last_update_time = time.time()
         
@@ -75,14 +76,14 @@ class SimulationEngine:
     
     def pause_simulation(self):
         """Pause the simulation"""
-        if self.is_running:
-            self.is_running = False
+        if not self.paused:
+            self.paused = True
             self._emit_event('simulation_paused', {'time': self.simulation_time})
     
     def resume_simulation(self):
         """Resume the simulation"""
-        if not self.is_running:
-            self.is_running = True
+        if self.paused:
+            self.paused = False
             self.last_update_time = time.time()
             self._emit_event('simulation_resumed', {'time': self.simulation_time})
     
@@ -95,6 +96,7 @@ class SimulationEngine:
         """Main simulation loop"""
         while self.is_running:
             try:
+                if self.paused: continue
                 current_time = time.time()
                 real_delta_time = current_time - self.last_update_time
                 
@@ -213,7 +215,7 @@ class SimulationEngine:
         """Get current simulation state"""
         with self.update_lock:
             return {
-                'is_running': self.is_running,
+                'is_running': not self.paused,
                 'simulation_time': self.simulation_time,
                 'speed_multiplier': self.speed_multiplier,
                 'stats': self.stats.copy(),
