@@ -5,6 +5,15 @@ import heapq
 POINT_SELECT_RADIUS = 8
 DRAW_GRAPH = False
 
+def Position(x, y):
+    return (x, y)
+
+colors = [(255, 99, 71),   # 토마토 빨강
+ (135, 206, 235), # 하늘색
+ (255, 215, 0),   # 금색 노랑
+ (144, 238, 144), # 연두색
+ (186, 85, 211)]
+
 def vector(a, b):
     return (b[0]-a[0], b[1]-a[1])
 
@@ -15,8 +24,9 @@ def ccw(A, B, C):
 def segments_intersect(l1, l2):
     '''
     not cross : 0
-    cross : 1
+    end point cross : 1
     overlap : 2
+    cross : 3
     '''
     A, B = l1
     C, D = l2
@@ -32,19 +42,23 @@ def segments_intersect(l1, l2):
         if B < C or D < A: return 0
         elif B == C or D == A: return 1
         else: return 2
-    elif x <= 0 and y <= 0: return 1
+    elif x <= 0 and y <= 0:
+        if x == 0 or y == 0:
+            return 1
+        else:
+            return 3
     else: return 0
 
 def segment_intersects_polygon(line, polygon):
     '''
     not cross : 0
     touch : 1
-    intersect : 2
+    overlap : 2
+    intersect : 3
     '''
     result = 0
     for i in range(len(polygon)):
-        if line[0] == polygon[i] or line[1] == polygon[i] or line[0] == polygon[i-1] or line[1] == polygon[i-1]: result = max(result, 1)
-        elif segments_intersect(line, (polygon[i-1], polygon[i])): result = 2
+        result = max(segments_intersect(line, (polygon[i-1], polygon[i])), result)
     return result
 
 def is_in_polygon(polygon, p):
@@ -60,52 +74,77 @@ def dist(a, b):
     return math.hypot(*v)
 
 def routing(start, end, buildings, depth=0):
+    assert start != end
     if depth > 100:
         print(start, end, buildings)
         return [start, end]
-    polygons = [[start], [end]]
-    for polygon in buildings:
+
+    point_to_index = dict()
+    index_to_point = []
+    point_index_to_polygon = []
+    polygons = []
+
+    point_to_index[start] = 0
+    index_to_point.append(start)
+    point_index_to_polygon.append(set())
+    point_to_index[end] = 1
+    index_to_point.append(end)
+    point_index_to_polygon.append(set())
+    for i, polygon in enumerate(buildings):
         if segment_intersects_polygon((start, end), polygon):
             polygons.append(polygon)
+            for point in polygon:
+                if point not in point_to_index:
+                    point_to_index[point] = len(point_to_index)
+                    index_to_point.append(point)
+                    point_index_to_polygon.append(set())
+                index = point_to_index[point]
+                point_index_to_polygon[index].add(i)
 
-    table = []
-    graph = []
+    graph = [[] for _ in range(len(point_to_index))]
     for polygon in polygons:
-        offset = len(table)
-        edges = []
         for i in range(len(polygon)):
-            edges.append([offset + (i - 1) % len(polygon), offset + (i + 1) % len(polygon)])
-            for j, other_point in enumerate(table):
-                for other_polygon in polygons:
-                    if segment_intersects_polygon((polygon[i], other_point), other_polygon) == 2: break
-                else:
-                    graph[j].append(offset + i)
-                    edges[i].append(j)
-        table.extend(polygon)
-        graph.extend(edges)
+            a, b = point_to_index[polygon[i-1]], point_to_index[polygon[i]]
+            graph[a].append(b)
+            graph[b].append(a)
+    
+    n = len(index_to_point)
+    for i in range(n):
+        for j in range(i):
+            if point_index_to_polygon[i] & point_index_to_polygon[j]: continue
+            p1 = index_to_point[i]
+            p2 = index_to_point[j]
+            for other_polygon in polygons:
+                if segment_intersects_polygon((p1, p2), other_polygon) == 3: break
+            else:
+                graph[i].append(j)
+                graph[j].append(i)
 
-    dist_table = [-1] * len(table)
-    connection = [None] * len(table)
-    dist_table[0] = 0
-    queue = [(0, 0, 0)]
+    dist_table = [-1] * n
+    connection = [None] * n
+    dist_table[point_to_index[start]] = 0
+    queue = [(0, 0, point_to_index[start])]
     while queue:
         _, d, x = heapq.heappop(queue)
-        if x == 1: break
+        if x == point_to_index[end]: break
         if dist_table[x] != d: continue
 
         for y in graph[x]:
-            d_ = dist(table[x], table[y]) + dist_table[x]
+            d_ = dist(index_to_point[x], index_to_point[y]) + dist_table[x]
             if dist_table[y] != -1 and d_ >= dist_table[y]: continue
             dist_table[y] = d_
             connection[y] = x
-            heapq.heappush(queue, (d_ + dist(table[1], table[y]), d_, y))
+            heapq.heappush(queue, (d_ + dist(index_to_point[1], index_to_point[y]), d_, y))
 
     if DRAW_GRAPH:
-        for i in range(len(table)):
+        for i in range(len(index_to_point)):
             for j in graph[i]:
-                pygame.draw.line(screen, (120, 120, 120), table[i], table[j], 1)
+                pygame.draw.line(screen, colors[min(depth, 4)], index_to_point[i], index_to_point[j], 2)
 
-    x = 1
+    x = point_to_index[end]
+    if connection[x] == None:
+        return []
+
     route = [x]
     while x != 0:
         x = connection[x]
@@ -113,15 +152,14 @@ def routing(start, end, buildings, depth=0):
     route.reverse()
 
     if len(route) == 2:
-        return [table[x] for x in route]
+        return [index_to_point[x] for x in route]
     else:
         new_route = []
         for i in range(len(route) - 1):
-            new_route.extend(routing(table[route[i]], table[route[i+1]], buildings, depth+1))
+            new_route.extend(routing(index_to_point[route[i]], index_to_point[route[i+1]], buildings, depth+1))
             new_route.pop()
-        new_route.append(table[route[-1]])
+        new_route.append(index_to_point[route[-1]])
         return new_route
-
 
 def main():
     global DRAW_GRAPH
@@ -129,7 +167,7 @@ def main():
     buildings = []
     start_point = (0, 0)
     end_point = (600, 600)
-
+    
     # mode 1 : edit point position
     # mode 2 : add point
     # mode 3 : delete point

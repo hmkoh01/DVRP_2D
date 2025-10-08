@@ -8,7 +8,7 @@ import math
 from typing import List, Dict, Optional, Tuple
 from ..models.entities import Order, Building, Depot, Drone, OrderStatus, Position, EntityType
 from .clustering import MixedClustering
-from .routing import DroneRouteOptimizer, SimpleRouting
+from .routing import DroneRouteOptimizer, SimpleRouting, AStarRouting
 import config
 
 
@@ -180,7 +180,8 @@ class OrderManager:
         self.completed_orders: List[Order] = []
         self.order_generator = OrderGenerator(map_obj, seed=seed)
         self.depot_selector = DepotSelector(map_obj)
-        self.route_optimizer = DroneRouteOptimizer(SimpleRouting())
+        # self.route_optimizer = DroneRouteOptimizer(SimpleRouting())
+        self.route_optimizer = DroneRouteOptimizer(AStarRouting(map_obj))
     
     def process_orders(self, current_time: float) -> List[Order]:
         """Process pending orders and generate new ones"""
