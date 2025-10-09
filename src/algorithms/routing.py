@@ -3,11 +3,12 @@ Routing algorithms and path optimization interfaces
 """
 
 import math
+import heapq
 from abc import ABC, abstractmethod
 from typing import List, Tuple, Optional
-from ..models.entities import Position, Order, Drone
+from ..models.entities import Position, Order, Drone, Map
 import config
-
+from .geometry_utils import segments_intersect, segment_intersects_polygon, dist
 
 class RoutingAlgorithm(ABC):
     """Abstract base class for routing algorithms"""
@@ -54,22 +55,106 @@ class SimpleRouting(RoutingAlgorithm):
 class AStarRouting(RoutingAlgorithm):
     """A* pathfinding algorithm for obstacle avoidance"""
     
-    def __init__(self, map_obj):
+    def __init__(self, map_obj: Map):
         self.map = map_obj
-        self.grid_resolution = 10  # Grid cell size
-    
+        self.buildings = []
+        for building in self.map.buildings:
+            x, y = building.position.x, building.position.y
+            w, h = building.width, building.height
+            self.buildings.append([Position(x, y), Position(x+w, y), Position(x+w, y+h), Position(x, y+h)])
+
+    def routing(self, start, end, depth=0):
+        assert start != end
+        if depth > 20:
+            print('recursion error', start, end, self.buildings)
+            return [start, end]
+
+        point_to_index = dict()
+        index_to_point = []
+        point_index_to_polygon = []
+        polygons = []
+
+        point_to_index[start] = 0
+        index_to_point.append(start)
+        point_index_to_polygon.append(set())
+        point_to_index[end] = 1
+        index_to_point.append(end)
+        point_index_to_polygon.append(set())
+        for i, polygon in enumerate(self.buildings):
+            if segment_intersects_polygon((start, end), polygon):
+                polygons.append(polygon)
+                for point in polygon:
+                    if point not in point_to_index:
+                        point_to_index[point] = len(point_to_index)
+                        index_to_point.append(point)
+                        point_index_to_polygon.append(set())
+                    index = point_to_index[point]
+                    point_index_to_polygon[index].add(i)
+
+        graph = [[] for _ in range(len(point_to_index))]
+        for polygon in polygons:
+            for i in range(len(polygon)):
+                a, b = point_to_index[polygon[i-1]], point_to_index[polygon[i]]
+                graph[a].append(b)
+                graph[b].append(a)
+        
+        n = len(index_to_point)
+        for i in range(n):
+            for j in range(i):
+                if point_index_to_polygon[i] & point_index_to_polygon[j]: continue
+                p1 = index_to_point[i]
+                p2 = index_to_point[j]
+                for other_polygon in polygons:
+                    if segment_intersects_polygon((p1, p2), other_polygon) == 3: break
+                else:
+                    graph[i].append(j)
+                    graph[j].append(i)
+
+        dist_table = [-1] * n
+        connection = [None] * n
+        dist_table[point_to_index[start]] = 0
+        queue = [(0, 0, point_to_index[start])]
+        while queue:
+            _, d, x = heapq.heappop(queue)
+            if x == point_to_index[end]: break
+            if dist_table[x] != d: continue
+
+            for y in graph[x]:
+                d_ = dist(index_to_point[x], index_to_point[y]) + dist_table[x]
+                if dist_table[y] != -1 and d_ >= dist_table[y]: continue
+                dist_table[y] = d_
+                connection[y] = x
+                heapq.heappush(queue, (d_ + dist(index_to_point[1], index_to_point[y]), d_, y))
+
+        x = point_to_index[end]
+        if connection[x] == None:
+            return []
+
+        route = [x]
+        while x != 0:
+            x = connection[x]
+            route.append(x)
+        route.reverse()
+
+        if len(route) == 2:
+            return [index_to_point[x] for x in route]
+        else:
+            new_route = []
+            for i in range(len(route) - 1):
+                new_route.extend(self.routing(index_to_point[route[i]], index_to_point[route[i+1]], depth+1))
+                new_route.pop()
+            new_route.append(index_to_point[route[-1]])
+            return new_route
+
     def calculate_route(self, start: Position, waypoints: List[Position], end: Position) -> List[Position]:
         """Calculate route using A* algorithm"""
-        # For now, implement simple routing
-        # In a full implementation, this would use A* to avoid buildings
-        route = [start]
-        
-        # Add waypoints
-        for waypoint in waypoints:
-            route.append(waypoint)
-        
+        positions = [start] + waypoints + [end]
+        route = []
+        for i in range(len(positions) - 1):
+            route.extend(self.routing(positions[i], positions[i+1]))
+            route.pop()
         route.append(end)
-        
+
         return route
     
     def calculate_distance(self, route: List[Position]) -> float:
@@ -118,8 +203,8 @@ class DroneRouteOptimizer:
         # Combine routes (excluding duplicate customer position)
         full_route = route + return_route[1:]
         
-        return full_route
-    
+        return [position.copy() for position in full_route]
+
     def calculate_delivery_time(self, route: List[Position], drone_speed: float = None) -> float:
         """Calculate estimated delivery time for a route"""
         if drone_speed is None:

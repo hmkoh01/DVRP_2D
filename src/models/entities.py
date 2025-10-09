@@ -47,6 +47,20 @@ class Position:
     def __sub__(self, other: 'Position') -> 'Position':
         return Position(self.x - other.x, self.y - other.y)
 
+    def __getitem__(self, x):
+        if x == 0:
+            return self.x
+        elif x == 1:
+            return self.y
+        else:
+            assert IndexError
+
+    def __hash__(self):
+        return hash((self.x, self.y))
+
+    def __lt__(self, other: 'Position') -> bool:
+        return (self.x, self.y) < (other.x, other.y)
+
     def copy(self) -> 'Position':
         return Position(self.x, self.y)
 
