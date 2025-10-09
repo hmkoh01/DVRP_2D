@@ -252,12 +252,24 @@ class Visualizer:
                 pygame.draw.lines(self.screen, self.colors['route'], False, trail, 2)
 
     def draw_routes(self):
+        """Draw the entire planned route for each active drone."""
         for depot in self.map.depots:
             for drone in depot.drones:
+                # 드론에게 할당된 전체 경로(route)가 있는지 확인합니다.
                 if drone.route and len(drone.route) > 0:
-                    start_pos = self.map_to_screen(drone.position)
-                    end_pos = self.map_to_screen(drone.route[0])
-                    pygame.draw.line(self.screen, self.colors['route'], start_pos, end_pos, 2)
+                    # 경로 시각화를 위해 현재 드론 위치와 전체 경로 지점들을 하나의 리스트로 합칩니다.
+                    # 예: [현재위치, 상점, 고객, 복귀지점]
+                    all_points_map = [drone.position] + drone.route
+                    
+                    # 맵 좌표 리스트를 화면 좌표 리스트로 변환합니다.
+                    screen_points = [self.map_to_screen(pos) for pos in all_points_map]
+                    
+                    # 변환된 좌표들을 사용하여 선으로 연결합니다.
+                    # 점이 2개 이상 있어야 선을 그릴 수 있습니다.
+                    if len(screen_points) > 1:
+                        # pygame.draw.lines 함수는 여러 점을 한 번에 이어서 그려줍니다.
+                        pygame.draw.lines(self.screen, self.colors['route'], False, screen_points, 2)
+
 
     def draw_orders(self):
         if not hasattr(self, 'simulation_engine'): return
